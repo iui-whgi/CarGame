@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>손동작 제어 3D 자동차 경주 게임</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #gameCanvas {
+            display: block;
+            cursor: none;
+        }
+        
+        #webcamContainer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border: 2px solid #00ff88;
+            border-radius: 10px;
+            overflow: hidden;
+            z-index: 200;
+            background: rgba(0,0,0,0.8);
+        }
+        
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* 미러 효과 */
+        }
+        
+        #handCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        #gameUI {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        #speedometer {
+            position: absolute;
+            bottom: 30px;
+            right: 250px; /* 웹캠 공간 확보 */
+            width: 120px;
+            height: 120px;
+            background: radial-gradient(circle, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 100%);
+            border-radius: 50%;
+            border: 3px solid #00ff88;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #00ff88;
+            font-weight: bold;
+        }
+        
+        #speed {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        #speedLabel {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        #gameInfo {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        #handInfo {
+            position: absolute;
+            top: 180px;
+            right: 20px;
+            width: 200px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            border: 1px solid #00ff88;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            font-size: 14px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            display: none;
+            border: 2px solid #00ff88;
+            backdrop-filter: blur(10px);
+        }
+        
+        button {
+            background: linear-gradient(45deg, #00ff88, #00cc6a);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s;
+            pointer-events: all;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,255,136,0.4);
+        }
+        
+        #startScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            border: 2px solid #00ff88;
+            backdrop-filter: blur(10px);
+        }
+        
+        .hand-indicator {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #00ff88;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 150;
+            pointer-events: none;
+        }
+        
+        .gesture-feedback {
+            position: absolute;
+            bottom: 200px;
+            left: 30px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #00ff88;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="webcamContainer">
+            <video id="webcam" autoplay muted></video>
+            <canvas id="handCanvas"></canvas>
+        </div>
+        
+        <div id="gameUI">
+            <div id="gameInfo">
+                <div>점수: <span id="score">0</span></div>
+                <div>레벨: <span id="level">1</span></div>
+            </div>
+            
+            <div id="handInfo">
+                <div><strong>손동작 제어:</strong></div>
+                <div>주먹: 가속</div>
+                <div>펼친 손: 정지</div>
+                <div>손 좌우 이동: 조향</div>
+                <div>상태: <span id="gestureStatus">대기중</span></div>
+            </div>
+            
+            <div id="speedometer">
+                <div id="speed">0</div>
+                <div id="speedLabel">KM/H</div>
+            </div>
+            
+            <div id="controls">
+                손동작으로 제어하거나 키보드 사용 (A/D 또는 ←/→: 조향 | W/S 또는 ↑/↓: 가속/감속)
+            </div>
+            
+            <div class="gesture-feedback" id="gestureFeedback">
+                현재 동작: <span id="currentGesture">없음</span>
+            </div>
+        </div>
+        
+        <div id="startScreen">
+            <h1 style="color: #00ff88; margin-bottom: 20px;">🏎️ 손동작 제어 3D 레이싱</h1>
+            <p>웹캠을 사용한 손동작 인식으로 조작하는 3D 레이싱 게임</p>
+            <p>주먹을 쥐면 가속, 손을 펼치면 정지!</p>
+            <p>손을 좌우로 움직여서 조향하세요!</p>
+            <button onclick="startGame()">게임 시작</button>
+        </div>
+        
+        <div id="gameOver">
+            <h2 style="color: #ff4757;">게임 오버!</h2>
+            <p>최종 점수: <span id="finalScore">0</span></p>
+            <p>최고 속도: <span id="maxSpeed">0</span> KM/H</p>
+            <button onclick="restartGame()">다시 시작</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script>
+        // 게임 변수
+        let scene, camera, renderer, gameRunning = false;
+        let playerCar, road, obstacles = [];
+        let score = 0, speed = 0, maxSpeed = 0, level = 1;
+        let keys = {};
+        let roadSegments = [];
+        let trees = [];
+        
+        // 손동작 인식 변수
+        let hands, videoElement, canvasCtx;
+        let handPosition = { x: 0.5, y: 0.5 }; // 정규화된 위치 (0-1)
+        let isHandDetected = false;
+        let currentGesture = "none";
+        let gestureState = {
+            isAccelerating: false,
+            steerDirection: 0 // -1 (왼쪽), 0 (중앙), 1 (오른쪽)
+        };
+        
+        // 게임 설정
+        const gameConfig = {
+            carSpeed: 0,
+            maxCarSpeed: 200,
+            acceleration: 0.5,
+            deceleration: 0.8,
+            turnSpeed: 0.05,
+            obstacleSpeed: 0.5,
+            roadWidth: 20,
+            cameraHeight: 12,
+            cameraDistance: 5,
+            handSensitivity: 0.3 // 손동작 민감도
+        };
+
+        // 키보드 이벤트
+        document.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        // 손동작 인식 초기화
+        async function initHandTracking() {
+            videoElement = document.getElementById('webcam');
+            const canvasElement = document.getElementById('handCanvas');
+            canvasCtx = canvasElement.getContext('2d');
+
+            hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onResults);
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                videoElement.srcObject = stream;
+                
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({ image: videoElement });
+                    },
+                    width: 200,
+                    height: 150
+                });
+                camera.start();
+                
+                console.log("손동작 인식 초기화 완료");
+            } catch (error) {
+                console.error("웹캠 접근 실패:", error);
+                document.getElementById('gestureStatus').textContent = "웹캠 오류";
+            }
+        }
+
+        function onResults(results) {
+            const canvasElement = document.getElementById('handCanvas');
+            const canvasWidth = canvasElement.width = 200;
+            const canvasHeight = canvasElement.height = 150;
+            
+            canvasCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+            canvasCtx.drawImage(results.image, 0, 0, canvasWidth, canvasHeight);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                isHandDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // 손 그리기
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+                drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1});
+                
+                // 손 위치 계산 (손목 기준)
+                const wrist = landmarks[0];
+                handPosition.x = 1 - wrist.x; // 미러 효과 적용
+                handPosition.y = wrist.y;
+                
+                // 제스처 인식
+                detectGesture(landmarks);
+                
+                document.getElementById('gestureStatus').textContent = "인식됨";
+            } else {
+                isHandDetected = false;
+                currentGesture = "none";
+                gestureState.isAccelerating = false;
+                gestureState.steerDirection = 0;
+                document.getElementById('gestureStatus').textContent = "손 없음";
+            }
+            
+            // UI 업데이트
+            document.getElementById('currentGesture').textContent = currentGesture;
+        }
+
+        function detectGesture(landmarks) {
+            // 손가락 끝점과 관절점들
+            const fingerTips = [4, 8, 12, 16, 20]; // 엄지, 검지, 중지, 약지, 소지
+            const fingerMCPs = [3, 6, 10, 14, 18]; // 각 손가락의 MCP 관절
+            
+            let fingersUp = 0;
+            
+            // 엄지 확인 (x 좌표 기준)
+            if (landmarks[4].x > landmarks[3].x) {
+                fingersUp++;
+            }
+            
+            // 나머지 손가락 확인 (y 좌표 기준)
+            for (let i = 1; i < 5; i++) {
+                if (landmarks[fingerTips[i]].y < landmarks[fingerMCPs[i]].y) {
+                    fingersUp++;
+                }
+            }
+            
+            // 제스처 분류
+            if (fingersUp <= 1) {
+                currentGesture = "주먹";
+                gestureState.isAccelerating = true;
+            } else if (fingersUp >= 4) {
+                currentGesture = "펼친 손";
+                gestureState.isAccelerating = false;
+            } else {
+                currentGesture = "부분적";
+                gestureState.isAccelerating = false;
+            }
+            
+            // 조향 계산 (손목 위치 기준)
+            if (handPosition.x < 0.3) {
+                gestureState.steerDirection = -1; // 왼쪽
+            } else if (handPosition.x > 0.7) {
+                gestureState.steerDirection = 1; // 오른쪽
+            } else {
+                gestureState.steerDirection = 0; // 중앙
+            }
+        }
+
+        function init() {
+            // 씬 생성
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x87CEEB, 50, 200);
+            
+            // 카메라 생성
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            // 렌더러 생성
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('gameCanvas'),
+                antialias: true 
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x87CEEB);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            
+            // 조명 설정
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, 50, 50);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            createRoad();
+            createPlayerCar();
+            createEnvironment();
+            updateCameraPosition();
+            
+            // 손동작 인식 초기화
+            initHandTracking();
+            
+            animate();
+        }
+
+        function createRoad() {
+            for (let i = 0; i < 50; i++) {
+                const roadGeometry = new THREE.PlaneGeometry(gameConfig.roadWidth, 10);
+                const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+                const roadSegment = new THREE.Mesh(roadGeometry, roadMaterial);
+                roadSegment.rotation.x = -Math.PI / 2;
+                roadSegment.position.z = i * -10;
+                roadSegment.receiveShadow = true;
+                scene.add(roadSegment);
+                roadSegments.push(roadSegment);
+                
+                if (i % 2 === 0) {
+                    const lineGeometry = new THREE.PlaneGeometry(0.3, 4);
+                    const lineMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFF00 });
+                    const line = new THREE.Mesh(lineGeometry, lineMaterial);
+                    line.rotation.x = -Math.PI / 2;
+                    line.position.set(0, 0.01, i * -10);
+                    scene.add(line);
+                }
+            }
+        }
+
+        function createPlayerCar() {
+            const carGroup = new THREE.Group();
+            
+            const bodyGeometry = new THREE.BoxGeometry(2, 1, 4);
+            const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xff4757 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.5;
+            body.castShadow = true;
+            carGroup.add(body);
+            
+            const roofGeometry = new THREE.BoxGeometry(1.6, 0.8, 2);
+            const roofMaterial = new THREE.MeshLambertMaterial({ color: 0xcc3742 });
+            const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+            roof.position.set(0, 1.2, -0.2);
+            roof.castShadow = true;
+            carGroup.add(roof);
+            
+            const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
+            const wheelMaterial = new THREE.MeshLambertMaterial({ color: 0x222222 });
+            
+            const positions = [
+                [-1.2, 0.4, 1.2], [1.2, 0.4, 1.2], 
+                [-1.2, 0.4, -1.2], [1.2, 0.4, -1.2]
+            ];
+            
+            positions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(...pos);
+                wheel.castShadow = true;
+                carGroup.add(wheel);
+            });
+            
+            const headlightGeometry = new THREE.SphereGeometry(0.15);
+            const headlightMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xFFFFFF,
+                emissive: 0x444444 
+            });
+            
+            [-0.7, 0.7].forEach(x => {
+                const headlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+                headlight.position.set(x, 0.6, 2.1);
+                carGroup.add(headlight);
+            });
+            
+            carGroup.position.set(0, 0, 0);
+            playerCar = carGroup;
+            scene.add(playerCar);
+        }
+
+        function createEnvironment() {
+            for (let i = 0; i < 100; i++) {
+                createTree(
+                    (Math.random() - 0.5) * 100,
+                    0,
+                    -Math.random() * 500
+                );
+            }
+            
+            for (let i = 0; i < 20; i++) {
+                createBuilding(
+                    (Math.random() - 0.5) * 200,
+                    0,
+                    -Math.random() * 300
+                );
+            }
+        }
+
+        function createTree(x, y, z) {
+            const treeGroup = new THREE.Group();
+            
+            const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.5, 4);
+            const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = 2;
+            trunk.castShadow = true;
+            treeGroup.add(trunk);
+            
+            const leavesGeometry = new THREE.SphereGeometry(2);
+            const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+            leaves.position.y = 5;
+            leaves.castShadow = true;
+            treeGroup.add(leaves);
+            
+            treeGroup.position.set(x, y, z);
+            scene.add(treeGroup);
+            trees.push(treeGroup);
+        }
+
+        function createBuilding(x, y, z) {
+            const height = Math.random() * 20 + 10;
+            const width = Math.random() * 5 + 3;
+            const depth = Math.random() * 5 + 3;
+            
+            const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
+            const buildingMaterial = new THREE.MeshLambertMaterial({ 
+                color: new THREE.Color().setHSL(Math.random() * 0.3 + 0.5, 0.5, 0.6) 
+            });
+            const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+            building.position.set(x, height/2, z);
+            building.castShadow = true;
+            building.receiveShadow = true;
+            scene.add(building);
+        }
+
+        function createObstacle() {
+            const obstacleGroup = new THREE.Group();
+            
+            const bodyGeometry = new THREE.BoxGeometry(2, 1, 4);
+            const colors = [0x3742fa, 0xff6b6b, 0x4ecdc4, 0x45b7d1, 0xf9ca24];
+            const bodyMaterial = new THREE.MeshLambertMaterial({ 
+                color: colors[Math.floor(Math.random() * colors.length)] 
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.5;
+            body.castShadow = true;
+            obstacleGroup.add(body);
+            
+            const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
+            const wheelMaterial = new THREE.MeshLambertMaterial({ color: 0x222222 });
+            
+            const positions = [
+                [-1.2, 0.4, 1.2], [1.2, 0.4, 1.2], 
+                [-1.2, 0.4, -1.2], [1.2, 0.4, -1.2]
+            ];
+            
+            positions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(...pos);
+                wheel.castShadow = true;
+                obstacleGroup.add(wheel);
+            });
+            
+            const lanes = [-6, -2, 2, 6];
+            obstacleGroup.position.set(
+                lanes[Math.floor(Math.random() * lanes.length)],
+                0,
+                -200
+            );
+            
+            scene.add(obstacleGroup);
+            obstacles.push(obstacleGroup);
+        }
+
+        function updateCameraPosition() {
+            camera.position.set(
+                playerCar.position.x,
+                playerCar.position.y + gameConfig.cameraHeight,
+                playerCar.position.z + gameConfig.cameraDistance
+            );
+            
+            camera.lookAt(
+                playerCar.position.x,
+                playerCar.position.y,
+                playerCar.position.z - 15
+            );
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            speed = 0;
+            maxSpeed = 0;
+            level = 1;
+            gameConfig.carSpeed = 0;
+            
+            obstacles.forEach(obstacle => scene.remove(obstacle));
+            obstacles = [];
+            
+            playerCar.position.set(0, 0, 0);
+            
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('maxSpeed').textContent = Math.round(maxSpeed);
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function update() {
+            if (!gameRunning) return;
+            
+            // 손동작 입력 처리
+            if (isHandDetected) {
+                // 조향 (손 위치 기준)
+                if (gestureState.steerDirection === -1) {
+                    playerCar.position.x -= gameConfig.turnSpeed * (gameConfig.carSpeed * 0.01 + 1);
+                } else if (gestureState.steerDirection === 1) {
+                    playerCar.position.x += gameConfig.turnSpeed * (gameConfig.carSpeed * 0.01 + 1);
+                }
+                
+                // 가속/감속 (제스처 기준)
+                if (gestureState.isAccelerating) {
+                    gameConfig.carSpeed = Math.min(gameConfig.carSpeed + gameConfig.acceleration, gameConfig.maxCarSpeed);
+                } else {
+                    gameConfig.carSpeed = Math.max(gameConfig.carSpeed - gameConfig.deceleration, 0);
+                }
+            }
+            
+            // 키보드 입력 처리 (백업)
+            if (keys['a'] || keys['arrowleft']) {
+                playerCar.position.x -= gameConfig.turnSpeed * (gameConfig.carSpeed * 0.01 + 1);
+            }
+            if (keys['d'] || keys['arrowright']) {
+                playerCar.position.x += gameConfig.turnSpeed * (gameConfig.carSpeed * 0.01 + 1);
+            }
+            if (keys['w'] || keys['arrowup']) {
+                gameConfig.carSpeed = Math.min(gameConfig.carSpeed + gameConfig.acceleration, gameConfig.maxCarSpeed);
+            }
+            if (keys['s'] || keys['arrowdown']) {
+                gameConfig.carSpeed = Math.max(gameConfig.carSpeed - gameConfig.deceleration * 2, 0);
+            }
+            
+            // 자동 감속 (손동작 또는 키보드 입력이 없을 때)
+            if (!gestureState.isAccelerating && !keys['w'] && !keys['arrowup']) {
+                gameConfig.carSpeed = Math.max(gameConfig.carSpeed - gameConfig.deceleration * 0.5, 0);
+            }
+            
+            // 플레이어 위치 제한
+            playerCar.position.x = Math.max(-8, Math.min(8, playerCar.position.x));
+            
+            speed = gameConfig.carSpeed;
+            maxSpeed = Math.max(maxSpeed, speed);
+            
+            // 도로 이동
+            roadSegments.forEach(segment => {
+                segment.position.z += gameConfig.carSpeed * 0.05;
+                if (segment.position.z > 50) {
+                    segment.position.z -= 500;
+                }
+            });
+            
+            // 환경 오브젝트 이동
+            trees.forEach(tree => {
+                tree.position.z += gameConfig.carSpeed * 0.05;
+                if (tree.position.z > 50) {
+                    tree.position.z -= 500;
+                }
+            });
+            
+            // 장애물 생성
+            if (Math.random() < 0.003 + level * 0.0005) {
+                createObstacle();
+            }
+            
+            // 장애물 이동 및 충돌 검사
+            obstacles = obstacles.filter(obstacle => {
+                obstacle.position.z += gameConfig.carSpeed * 0.05 + gameConfig.obstacleSpeed;
+                
+                const distance = playerCar.position.distanceTo(obstacle.position);
+                if (distance < 3) {
+                    gameOver();
+                    return false;
+                }
+                
+                if (obstacle.position.z > 20) {
+                    scene.remove(obstacle);
+                    return false;
+                }
+                
+                return true;
+            });
+            
+            // 점수 및 레벨 업데이트
+            score += Math.floor(gameConfig.carSpeed * 0.1);
+            level = Math.floor(score / 1000) + 1;
+            
+            // UI 업데이트
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = level;
+            document.getElementById('speed').textContent = Math.round(speed);
+            
+            updateCameraPosition();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+            renderer.render(scene, camera);
+        }
+
+        // 윈도우 리사이즈 처리
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 게임 초기화
+        init();
+    </script>
+</body>
+</html>
